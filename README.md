@@ -69,7 +69,7 @@ and **7-day weekly** allowance you've used — the same numbers as Claude Code's
 **Install (about 30 seconds)**
 
 ```bash
-git clone https://github.com/kuchya/ClaudeUsageBar.git
+git clone https://github.com/MEOM/ClaudeUsageBar.git
 cd ClaudeUsageBar
 ./build.sh
 open ./ClaudeUsageBar.app
