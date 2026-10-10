@@ -119,6 +119,8 @@ struct Usage: Codable {
     let modelLimits: [ModelLimit]?  // per-model weekly caps (from limits[] scope.model)
     let breakdown: [SurfaceShare]?  // seven_day_breakdown rows (Claude Code / Chats / …)
     let overageCostUSD: Double?     // spend.used, when pay-per-use is active
+    let overageCurrency: String?    // spend.used.currency — NOT always USD (EUR, GBP, …)
+    let overageLimit: Double?       // spend.limit — the monthly usage-credit cap
     let fetchedAt: Date
 }
 
@@ -223,6 +225,8 @@ func fetchUsage(_ creds: Credentials) async -> Result<Usage, UsageError> {
             modelLimits: parseModelLimits(top),
             breakdown: parseBreakdown(top),
             overageCostUSD: parseSpendUSD(top),
+            overageCurrency: parseSpendCurrency(top),
+            overageLimit: parseSpendLimit(top),
             fetchedAt: Date()
         )
         if usage.session == nil && usage.weekly == nil {
@@ -271,6 +275,31 @@ func parseSpendUSD(_ top: [String: Any]?) -> Double? {
         usd = minor / pow(10.0, asDouble(used["exponent"]) ?? 2)
     }
     return (enabled || usd > 0) ? usd : nil
+}
+
+/// Currency code of the spend figures. The API bills in the account's own
+/// currency (EUR, GBP, …) — the upstream `…USD` naming is a misnomer.
+func parseSpendCurrency(_ top: [String: Any]?) -> String? {
+    guard let spend = top?["spend"] as? [String: Any],
+          let used = spend["used"] as? [String: Any] else { return nil }
+    return used["currency"] as? String
+}
+
+/// Monthly usage-credit cap from `spend.limit`, in major units.
+func parseSpendLimit(_ top: [String: Any]?) -> Double? {
+    guard let spend = top?["spend"] as? [String: Any],
+          let limit = spend["limit"] as? [String: Any],
+          let minor = asDouble(limit["amount_minor"]) else { return nil }
+    return minor / pow(10.0, asDouble(limit["exponent"]) ?? 2)
+}
+
+/// Format an amount in the account's actual currency, using the user's locale
+/// (so a Finnish EUR account reads "13,99 €", not "$13.99").
+func money(_ amount: Double, _ code: String?) -> String {
+    let f = NumberFormatter()
+    f.numberStyle = .currency
+    f.currencyCode = code ?? "USD"
+    return f.string(from: NSNumber(value: amount)) ?? String(format: "%.2f", amount)
 }
 
 /// One-time lookup of the signed-in Claude account email (shown in the menu).
@@ -417,7 +446,7 @@ final class NotchView: NSView {
             if let o = overage {
                 let line = NSMutableAttributedString(string: "Overage   ", attributes: [
                     .font: NSFont.systemFont(ofSize: 12, weight: .medium), .foregroundColor: NSColor(white: 0.85, alpha: 1)])
-                line.append(NSAttributedString(string: String(format: "$%.2f", o), attributes: [
+                line.append(NSAttributedString(string: money(o, u.overageCurrency), attributes: [
                     .font: NSFont.monospacedDigitSystemFont(ofSize: 12, weight: .semibold), .foregroundColor: NSColor.systemOrange]))
                 let z = zone(2)
                 line.draw(at: NSPoint(x: z.minX, y: z.minY + (z.height - line.size().height) / 2))
@@ -788,6 +817,16 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             title.append(seg("S", u.session))
             title.append(NSAttributedString(string: "   ", attributes: [.font: font]))
             title.append(seg("W", u.weekly))
+            // Pay-per-use (usage credits) spend. nil unless the account has it
+            // enabled or has actually spent — so this segment simply doesn't
+            // appear on plans where overage isn't in play.
+            if let cost = u.overageCostUSD {
+                title.append(NSAttributedString(string: "   ", attributes: [.font: font]))
+                title.append(NSAttributedString(string: money(cost, u.overageCurrency), attributes: [
+                    .font: font,
+                    .foregroundColor: NSColor.systemOrange,
+                ]))
+            }
             button.attributedTitle = title
         } else {
             button.image = nil
@@ -885,7 +924,14 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                 addRow("Weekly (\(m.name)):  \(Int(m.percent.rounded()))%", color: colorFor(m.percent))
             }
             if let cost = u.overageCostUSD {
-                addRow(String(format: "Overage spend:  $%.2f", cost), color: .systemOrange)
+                let cur = u.overageCurrency
+                if let cap = u.overageLimit, cap > 0 {
+                    let pct = Int((cost / cap * 100).rounded())
+                    addRow("Overage spend:  \(money(cost, cur)) of \(money(cap, cur))  (\(pct)%)",
+                           color: .systemOrange)
+                } else {
+                    addRow("Overage spend:  \(money(cost, cur))", color: .systemOrange)
+                }
             }
             if let bd = u.breakdown, bd.contains(where: { $0.percent > 0 }) {
                 addRow("This week, by surface:")

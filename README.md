@@ -6,6 +6,25 @@
 
 **A tiny macOS menu-bar app that shows your Claude usage — session & weekly limits — live, at a glance.**
 
+</div>
+
+> ### MEOM fork
+>
+> Fork of [kuchya/ClaudeUsageBar](https://github.com/kuchya/ClaudeUsageBar) with two changes:
+>
+> 1. **Usage-credit spend in the menu bar.** Upstream shows overage only in the
+>    dropdown; this fork adds it as a third segment in the menu-bar title, so the
+>    running cost is visible without clicking: `S 8%   W 100%   13,99 €`
+> 2. **Correct currency.** Upstream hardcodes `$` in all three render sites, but
+>    the API bills in the account's own currency (`spend.used.currency`) — a EUR
+>    account was shown as `$13.99` instead of `13,99 €`. This fork reads the
+>    currency from the API and formats via `NumberFormatter` in the user's locale.
+>    The dropdown also shows the monthly cap: `13,99 € of 100,00 € (14%)`.
+>
+> Everything else is upstream. Both fixes are candidates to send back as a PR.
+
+<div align="center">
+
 [![Platform](https://img.shields.io/badge/platform-macOS%2012%2B-000000?logo=apple&logoColor=white)](https://www.apple.com/macos/)
 [![Language](https://img.shields.io/badge/Swift-5-F05138?logo=swift&logoColor=white)](https://swift.org)
 [![Dependencies](https://img.shields.io/badge/dependencies-none-brightgreen)]()
